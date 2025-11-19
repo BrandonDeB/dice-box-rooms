@@ -2,7 +2,7 @@
 
 export class DiceNotation {
 
-	constructor(notation) {
+	constructor(notation, generate) {
 
 		// this is here for when the server sends us a notation object
 		// the object sent has no methods, so we must reinit the object
@@ -22,6 +22,7 @@ export class DiceNotation {
 		this.boost = 1;
 		this.notation = "";
 		this.vectors = [];
+		this.generate = generate;
 		// this.owner = -1;
 
 		if (!notation || notation =='0') {
@@ -169,6 +170,12 @@ export class DiceNotation {
 		// if (diceobj == null) { this.error = true; return; }
 
 		amount = Math.abs(parseInt(amount || 1));
+
+		if (this.generate) {
+			for (let i = 0; i < amount; i++) {
+				this.result.push(Math.floor(Math.random() * (parseInt(type.substring(1)))) + 1);
+			}
+		}
 
 		// update a previous set if these match
 		// has the added bonus of combining duplicate

@@ -159,6 +159,8 @@ class DiceBox {
 		
 		this.resizeWorld()
 
+
+
 		await this.loadTheme({
 			colorset: this.theme_colorset,
 			texture: this.theme_texture,
@@ -395,6 +397,13 @@ class DiceBox {
 		}
 		const debounceResize = debounce(resize)
 		window.addEventListener("resize", debounceResize)
+       const resizeObserver = new ResizeObserver(() => {
+         debounceResize();
+       });
+
+      resizeObserver.observe(this.container);
+
+      this.resizeObserver = resizeObserver;
 	}
 
 	vectorRand({x, y}) {
@@ -411,7 +420,7 @@ class DiceBox {
 	//returns an array of vectordata objects
 	getNotationVectors(notation, vector, boost, dist){
 
-		let notationVectors = new DiceNotation(notation);
+		let notationVectors = new DiceNotation(notation, false);
 
 		for (let i in notationVectors.set) {
 
@@ -507,7 +516,6 @@ class DiceBox {
 		return notationVectors;
 	}
 
-	// swaps dice faces to match desired result
 	swapDiceFace(dicemesh, result){
 		const diceobj = this.DiceFactory.get(dicemesh.notation.type);
 
@@ -608,20 +616,28 @@ class DiceBox {
 			const face = geom.groups[i];
 			let matindex = face.materialIndex;
 			if (matindex == 0) continue;
-        
-			matindex += num - 1;
 
+			// Convert from materialIndex range (2-5) to value range (1-4)
+			matindex = matindex - 1;
+
+			// Shift by the difference
+			matindex += num;
+
+			// Wrap to stay in 1-4 range
 			while (matindex > 4) matindex -= 4;
 			while (matindex < 1) matindex += 4;
 
+			// Convert back to materialIndex range (2-5)
 			face.materialIndex = matindex + 1;
 		}
 		if (num != 0) {
 			if (num < 0) num += 4;
 			dicemesh.material = this.DiceFactory.createMaterials(diceobj, 0, 0, false, num);
+			dicemesh.d4specialindex = num;
 		}
 
 		dicemesh.geometry = geom;
+		dicemesh.result = [];
 	}
 
 	//spawns one dicemesh object from a single vectordata object
