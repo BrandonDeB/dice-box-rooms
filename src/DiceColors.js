@@ -1,4 +1,5 @@
 import {TEXTURELIST} from "./const/texturelist"
+import { BASE64TEXTURES } from "./const/base64textures" 
 import {COLORSETS} from "./const/colorsets"
 
 export class DiceColors {
@@ -7,6 +8,8 @@ export class DiceColors {
 		this.colorsets = []
 		this.assetPath = options.assetPath
 	}
+
+
 
 	async ImageLoader(data) {
 
@@ -28,18 +31,26 @@ export class DiceColors {
 		return data
 	}
 
-	loadImage(src){
-		return new Promise((resolve, reject) => {
-			let img = new Image()
-			img.onload = () => resolve(img)
-			img.crossOrigin = "anonymous";
-			img.src = this.assetPath + src
-			img.onerror = (error) => reject(error)
-			}).catch(e => {
-				console.error("Unable to load image texture")
-				// throw new Error("Unable to load image")
-			})
-	}
+   loadImage(src) {
+
+       console.log(`Base 64 Texture src: ${src}`);
+       return new Promise((resolve, reject) => {
+           const dataUrl = BASE64TEXTURES[src];
+           if (!dataUrl) {
+               console.error(`Texture '${src}' not found in TEXTURES`);
+               reject(new Error("Missing texture in JSON: " + src));
+               return;
+           }
+
+           let img = new Image();
+           img.onload = () => resolve(img);
+           img.onerror = (error) => reject(error);
+           img.crossOrigin = "anonymous";
+           img.src = dataUrl;
+       }).catch(e => {
+           console.error("Unable to load embedded image texture:", e);
+       });
+   }
 
 	// randomColor() {
 	// 	// random colors
@@ -119,6 +130,7 @@ export class DiceColors {
 	}
 	
 	getTexture(texturename) {
+      console.log(`Texture Name: ${texturename}`)
 		if (Array.isArray(texturename)) {
 			let textures = [];
 			for(let i = 0, l = texturename.length; i < l; i++){
