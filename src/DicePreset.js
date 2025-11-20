@@ -1,4 +1,4 @@
-import {DICE} from "./const/dice"
+import {DICE} from "./const/dice.js"
 
 const defaults = {
 	name: '',

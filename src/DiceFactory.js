@@ -1,7 +1,7 @@
 "use strict";
 import {DicePreset} from './DicePreset.js'
-import {MATERIALTYPES} from "./const/materialtypes"
-import {DICE_GEOM} from "./const/dice"
+import {MATERIALTYPES} from "./const/materialtypes.js"
+import {DICE_GEOM} from "./const/dice.js"
 
 import * as THREE from "three"
 import * as CANNON from "cannon-es"
@@ -901,6 +901,33 @@ class DiceFactory {
 		geom.cannon_shape = this.create_shape(vertices, faces, radius);
 		geom.name = "d"+faces.length
 		return geom;
+	}
+
+	destroy() {
+		// Dispose of all cached materials and textures
+		Object.keys(this.materials_cache).forEach(key => {
+			const cached = this.materials_cache[key];
+			if (cached.composite) {
+				cached.composite.dispose();
+			}
+			if (cached.bump) {
+				cached.bump.dispose();
+			}
+		});
+		this.materials_cache = {};
+
+		// Dispose of all geometries
+		Object.keys(this.geometries).forEach(key => {
+			const geom = this.geometries[key];
+			if (geom && geom.dispose) {
+				geom.dispose();
+			}
+		});
+		this.geometries = {};
+
+		// Reset cache statistics
+		this.cache_hits = 0;
+		this.cache_misses = 0;
 	}
 }
 

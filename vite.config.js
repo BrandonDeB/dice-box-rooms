@@ -10,10 +10,16 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.js'),
-      name: 'dice-box-threejs',
-      fileName: (format) => `dice-box-threejs.${format}.js`
+      name: 'DiceBox',
+      fileName: (format) => `dice-box-threejs.${format}.js`,
+      formats: ['es', 'umd']
     },
     outDir,
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        exports: 'named'
+      }
+    }
   }
 })

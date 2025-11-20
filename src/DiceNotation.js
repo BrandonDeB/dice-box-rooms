@@ -1,6 +1,6 @@
 "use strict";
 
-export class DiceNotation {
+class DiceNotation {
 
 	constructor(notation, generate) {
 
@@ -233,3 +233,6 @@ export class DiceNotation {
 	}
 
 }
+
+export { DiceNotation }
+export default DiceNotation;

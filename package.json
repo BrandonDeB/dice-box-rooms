@@ -26,15 +26,23 @@
 	"bugs": {
 		"url": "https://github.com/3d-dice/dice-box-threejs/issues"
 	},
+  "type": "module",
   "dev-files": [
     "src"
   ],
   "dev-main": "./src/index",
-  "file": [
+  "files": [
     "dist",
     "public"
   ],
   "main": "./dist/dice-box-threejs.es.js",
+  "module": "./dist/dice-box-threejs.es.js",
+  "exports": {
+    ".": {
+      "import": "./dist/dice-box-threejs.es.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

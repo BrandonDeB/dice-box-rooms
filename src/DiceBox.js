@@ -7,7 +7,7 @@ import { DiceColors } from './DiceColors.js';
 import { THEMES } from './const/themes.js';
 // import CannonDebugger from 'cannon-es-debugger'
 
-import { debounce } from "./helpers"
+import { debounce } from "./helpers.js"
 
 const defaultConfig = {
 	assetPath: "./",
@@ -396,6 +396,10 @@ class DiceBox {
 			return needResize;
 		}
 		const debounceResize = debounce(resize)
+
+		// Store the debounced resize function so we can remove it later
+		this.debounceResize = debounceResize;
+
 		window.addEventListener("resize", debounceResize)
        const resizeObserver = new ResizeObserver(() => {
          debounceResize();
@@ -1137,11 +1141,11 @@ class DiceBox {
 
 		for (let i=0, len=this.diceList.length; i < len; ++i) {
 			if (!this.diceList[i]) continue;
-			
+
 			//reset dice vectors
 			this.spawnDice(this.notationVectors.vectors[i],this.diceList[i]);
 		}
-		
+
 		//check forced results, fix dice faces if necessary
 		if (this.notationVectors.result && this.notationVectors.result.length > 0) {
 			for (let i=0;i<this.notationVectors.result.length;i++) {
@@ -1159,6 +1163,136 @@ class DiceBox {
 		this.animateThrow(this.running, callback);
 
 	}
+
+	destroy() {
+		// Stop any running animations
+		this.running = false;
+		this.rolling = false;
+
+		// Remove event listeners
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect();
+			this.resizeObserver = null;
+		}
+
+		// Remove window resize listener
+		if (this.debounceResize) {
+			window.removeEventListener("resize", this.debounceResize);
+			this.debounceResize = null;
+		}
+
+		// Clean up all dice meshes
+		let dice;
+		while (dice = this.diceList.pop()) {
+			// Remove collision event listeners
+			if (dice.body) {
+				dice.body.removeEventListener('collide', this.eventCollide);
+				this.world.removeBody(dice.body);
+				dice.body = null;
+			}
+
+			// Note: Don't dispose of geometry here - it's shared from DiceFactory cache
+			// DiceFactory.destroy() will handle geometry disposal
+
+			// Dispose of materials (these are unique per dice)
+			if (dice.material) {
+				if (Array.isArray(dice.material)) {
+					dice.material.forEach(mat => {
+						if (mat.map) mat.map.dispose();
+						if (mat.bumpMap) mat.bumpMap.dispose();
+						mat.dispose();
+					});
+				} else {
+					if (dice.material.map) dice.material.map.dispose();
+					if (dice.material.bumpMap) dice.material.bumpMap.dispose();
+					dice.material.dispose();
+				}
+			}
+
+			// Remove from scene
+			this.scene.remove(dice);
+		}
+
+		// Clean up world bodies
+		if (this.box_body) {
+			if (this.box_body.desk) this.world.removeBody(this.box_body.desk);
+			if (this.box_body.topWall) this.world.removeBody(this.box_body.topWall);
+			if (this.box_body.bottomWall) this.world.removeBody(this.box_body.bottomWall);
+			if (this.box_body.leftWall) this.world.removeBody(this.box_body.leftWall);
+			if (this.box_body.rightWall) this.world.removeBody(this.box_body.rightWall);
+			this.box_body = {};
+		}
+
+		// Clean up scene objects
+		if (this.desk) {
+			if (this.desk.geometry) this.desk.geometry.dispose();
+			if (this.desk.material) this.desk.material.dispose();
+			this.scene.remove(this.desk);
+			this.desk = null;
+		}
+
+		if (this.light) {
+			this.scene.remove(this.light);
+			this.light = null;
+		}
+
+		if (this.light_amb) {
+			this.scene.remove(this.light_amb);
+			this.light_amb = null;
+		}
+
+		// Clean up renderer
+		if (this.renderer) {
+			// Remove the renderer's DOM element from the container
+			if (this.renderer.domElement && this.renderer.domElement.parentNode) {
+				this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+			}
+			this.renderer.dispose();
+			this.renderer = null;
+		}
+
+		// Clean up audio elements
+		Object.keys(this.sounds_table).forEach(key => {
+			this.sounds_table[key].forEach(audio => {
+				if (audio) {
+					audio.pause();
+					audio.src = '';
+					audio.load();
+				}
+			});
+		});
+		this.sounds_table = {};
+
+		Object.keys(this.sounds_dice).forEach(key => {
+			this.sounds_dice[key].forEach(audio => {
+				if (audio) {
+					audio.pause();
+					audio.src = '';
+					audio.load();
+				}
+			});
+		});
+		this.sounds_dice = [];
+
+		// Clean up DiceFactory resources
+		if (this.DiceFactory) {
+			this.DiceFactory.destroy();
+		}
+
+		// Clean up DiceColors resources
+		if (this.DiceColors) {
+			this.DiceColors.destroy();
+		}
+
+		// Clear remaining arrays and references
+		this.bodies = [];
+		this.meshes = [];
+		this.notationVectors = null;
+
+		// Mark as not initialized
+		this.initialized = false;
+	}
 }
 
 export { DiceBox }
+export default DiceBox

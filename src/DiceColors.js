@@ -1,6 +1,6 @@
-import {TEXTURELIST} from "./const/texturelist"
-import { BASE64TEXTURES } from "./const/base64textures" 
-import {COLORSETS} from "./const/colorsets"
+import {TEXTURELIST} from "./const/texturelist.js"
+import { BASE64TEXTURES } from "./const/base64textures.js"
+import {COLORSETS} from "./const/colorsets.js"
 
 export class DiceColors {
 	
@@ -33,7 +33,6 @@ export class DiceColors {
 
    loadImage(src) {
 
-       console.log(`Base 64 Texture src: ${src}`);
        return new Promise((resolve, reject) => {
            const dataUrl = BASE64TEXTURES[src];
            if (!dataUrl) {
@@ -130,7 +129,6 @@ export class DiceColors {
 	}
 	
 	getTexture(texturename) {
-      console.log(`Texture Name: ${texturename}`)
 		if (Array.isArray(texturename)) {
 			let textures = [];
 			for(let i = 0, l = texturename.length; i < l; i++){
@@ -138,11 +136,16 @@ export class DiceColors {
 			}
 			return textures;
 		}
-		
+
 		if (TEXTURELIST.hasOwnProperty(texturename)) {
 			return TEXTURELIST[texturename]
 		}
 		return TEXTURELIST['none']
+	}
+
+	destroy() {
+		// Clear all cached colorsets to allow garbage collection
+		this.colorsets = [];
 	}
 
 }
