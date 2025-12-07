@@ -82,8 +82,7 @@ class DiceFactory {
 				let face = this.geometry.groups[i];
 				if (face.materialIndex == 0) continue;
 
-				//Each group consists in 3 vertices of 3 elements (x, y, z) so the offset between faces in the Float32BufferAttribute is 9
-				let startVertex = i * 9;
+				let startVertex = face.start;
 				let normal = new THREE.Vector3(normals[startVertex], normals[startVertex + 1], normals[startVertex + 2]);
 				let angle = normal.clone().applyQuaternion(this.body.quaternion).angleTo(vector);
 				if (angle < closest_angle) {
@@ -102,10 +101,14 @@ class DiceFactory {
 				return {value: matindex, label: diceobj.labels[matindex-1][labelindex2][0], reason: reason};
 			}
 
-			if (['d10','d2'].includes(this.shape)) {
+			if (this.shape == 'd10') {
 				matindex += 1;
 				offset -= 1;
 			}
+         if (this.shape == 'd2') {
+            offset -= 1;
+            matindex += 2; 
+         }
 
 			let value = diceobj.values[((matindex-1) % diceobj.values.length)];
 			let label = diceobj.labels[(((matindex-1) % (diceobj.labels.length-2))+offset)];
@@ -634,6 +637,12 @@ class DiceFactory {
 			case 'd2':
 				var geom = new THREE.CylinderGeometry(1*radius, 1*radius, 0.1*radius, 32);
 				geom.cannon_shape = new CANNON.Cylinder(1*radius, 1*radius, 0.1*radius, 8);
+
+				geom.clearGroups();
+
+				geom.addGroup(0, 192, 0);
+				geom.addGroup(192, 96, 1);
+				geom.addGroup(288, 96, 2);
 				return geom;
 			case 'd4':
 				return this[func](DICE_GEOM.d4.vertices, DICE_GEOM.d4.faces, radius, -0.1, Math.PI * 7 / 6, 0.96);
