@@ -33,6 +33,7 @@
   "dev-main": "./src/index",
   "files": [
     "dist",
+    "index.d.ts",
     "public"
   ],
   "main": "./dist/dice-box-threejs.es.js",
@@ -40,7 +41,7 @@
   "exports": {
     ".": {
       "import": "./dist/dice-box-threejs.es.js",
-      "types": "./dist/index.d.ts"
+      "types": "./index.d.ts"
     }
   },
   "scripts": {
