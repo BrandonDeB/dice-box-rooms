@@ -38,7 +38,15 @@ class DiceBox {
 	constructor(element_container, options = {}) {
 		//private variables
 		this.initialized = false
-		this.container = document.querySelector(element_container);
+		// Accept a CSS selector or the element itself. Passing the element lets the
+		// dice live in another window (e.g. an Obsidian pop-out), which a selector
+		// searched in the main document cannot find.
+		this.container = typeof element_container === 'string'
+			? document.querySelector(element_container)
+			: element_container;
+		if (!this.container) throw new Error(`DiceBox: container not found: ${element_container}`);
+		// The window that owns the container: animate and listen for resizes there.
+		this.win = this.container.ownerDocument.defaultView || window;
 		this.dimensions = new THREE.Vector2(this.container.clientWidth, this.container.clientHeight)
 		this.adaptive_timestep = false;
 		this.last_time = 0;
@@ -114,7 +122,9 @@ class DiceBox {
 
 		this.DiceColors = new DiceColors({assetPath: this.assetPath});
 		this.DiceFactory = new DiceFactory({
-			baseScale: this.baseScale
+			baseScale: this.baseScale,
+			// Texture canvases must come from the same window as the renderer.
+			doc: this.container.ownerDocument,
 		});
 		this.DiceFactory.setBumpMapping(true);
 
@@ -140,7 +150,22 @@ class DiceBox {
 	async initialize() {
 
 		// this.cannonDebugger = new CannonDebugger(this.scene,this.world)
-		this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+		// Create the canvas in the container's own document so it works in other windows.
+		const canvas = this.container.ownerDocument.createElement('canvas');
+
+		// three.js detects WebGL 2 with `gl instanceof WebGL2RenderingContext`, using
+		// this window's class. A context from another window (e.g. an Obsidian pop-out)
+		// fails that check, so three falls back to WebGL 1 shaders and the dice shader
+		// fails to link ("useProgram: program not valid"). Point the global at the
+		// container window's class while the renderer detects its capabilities.
+		const swapWebGL2 = this.win !== window && this.win.WebGL2RenderingContext;
+		const ownWebGL2 = window.WebGL2RenderingContext;
+		if (swapWebGL2) window.WebGL2RenderingContext = this.win.WebGL2RenderingContext;
+		try {
+			this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, canvas })
+		} finally {
+			if (swapWebGL2) window.WebGL2RenderingContext = ownWebGL2;
+		}
 		this.container.appendChild(this.renderer.domElement);
 		this.renderer.shadowMap.enabled = this.shadows;
 		this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -400,8 +425,8 @@ class DiceBox {
 		// Store the debounced resize function so we can remove it later
 		this.debounceResize = debounceResize;
 
-		window.addEventListener("resize", debounceResize)
-       const resizeObserver = new ResizeObserver(() => {
+		this.win.addEventListener("resize", debounceResize)
+       const resizeObserver = new this.win.ResizeObserver(() => {
          debounceResize();
        });
 
@@ -879,9 +904,9 @@ class DiceBox {
 		if (this.running == threadid) {
 			((animateCallback, tid, at, aftercall, vecs) => {
 				if (!at && time_diff < this.framerate) {
-					setTimeout(() => { requestAnimationFrame(() => { animateCallback.call(this, tid, aftercall, vecs); }) }, (this.framerate - time_diff) * 1000);
+					setTimeout(() => { this.win.requestAnimationFrame(() => { animateCallback.call(this, tid, aftercall, vecs); }) }, (this.framerate - time_diff) * 1000);
 				} else {
-					requestAnimationFrame(() => { animateCallback.call(this, tid, aftercall, vecs); });
+					this.win.requestAnimationFrame(() => { animateCallback.call(this, tid, aftercall, vecs); });
 				}
 			}).bind(this)(this.animateThrow, threadid, this.adaptive_timestep, callback);
 		}
@@ -899,9 +924,9 @@ class DiceBox {
 		if (this.running == threadid) {
 			((animateCallback, tid, at) => {
 				if (!at && time_diff < this.framerate) {
-					setTimeout(() => { requestAnimationFrame(() => { animateCallback.call(this, tid); }) }, (this.framerate - time_diff) * 1000);
+					setTimeout(() => { this.win.requestAnimationFrame(() => { animateCallback.call(this, tid); }) }, (this.framerate - time_diff) * 1000);
 				} else {
-					requestAnimationFrame(() => { animateCallback.call(this, tid); });
+					this.win.requestAnimationFrame(() => { animateCallback.call(this, tid); });
 				}
 			}).bind(this)(this.animateAfterThrow, threadid, this.adaptive_timestep);
 		}
@@ -1177,7 +1202,7 @@ class DiceBox {
 
 		// Remove window resize listener
 		if (this.debounceResize) {
-			window.removeEventListener("resize", this.debounceResize);
+			this.win.removeEventListener("resize", this.debounceResize);
 			this.debounceResize = null;
 		}
 

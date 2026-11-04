@@ -288,13 +288,14 @@ class DiceFactory {
 			return this.materials_cache[cachestring];
 		}
 
-		let canvas = document.createElement("canvas");
+		const doc = this.doc || document;
+		let canvas = doc.createElement("canvas");
 		let context = canvas.getContext("2d", {alpha: true});
 
 		context.globalAlpha = 0;
 		context.clearRect(0, 0, canvas.width, canvas.height);
 
-		let canvasBump = document.createElement("canvas");
+		let canvasBump = doc.createElement("canvas");
 		let contextBump = canvasBump.getContext("2d", {alpha: true});
 		contextBump.globalAlpha = 0;
 		contextBump.clearRect(0, 0, canvasBump.width, canvasBump.height);
