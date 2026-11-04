@@ -2,13 +2,6 @@ export const MATERIALTYPES = {
   'none': {
     name: 'Plastic'
   },
-  'perfectmetal': {
-    name: 'Perfect Metal',
-    color: 0xdddddd,
-    roughness: 0,
-    metalness: 1,
-    envMapIntensity: 1
-  },
   'metal': {
     name: 'Metal',
     color: 0xdddddd,

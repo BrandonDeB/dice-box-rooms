@@ -11,6 +11,71 @@ const defaultConfig = {
 	bumpMapping: true
 }
 
+// True if a multi-digit label reads as a different label on the same die when
+// upside down, such as 16 / 91 on a d100. Those faces get an underline.
+const UPSIDE_DOWN_DIGITS = {'0': '0', '1': '1', '6': '9', '8': '8', '9': '6'};
+function readsDifferentlyUpsideDown(label, labels) {
+	if (!/^[01689]+$/.test(label)) return false;
+	const rotated = label.split('').reverse().map(c => UPSIDE_DOWN_DIGITS[c]).join('');
+	return rotated !== label && labels.includes(rotated);
+}
+
+// Fit a label as large as possible inside a triangular face (used by the d100).
+// The face's texture triangle comes from make_geom: its corners lie on a circle of
+// radius 0.5 / (1 + tab) (in texture units) around the centre, at angles
+// af + k * 120deg. Textures are flipped vertically when applied, and the text is
+// drawn rotated by `rotation` degrees, so the triangle is mapped into that frame.
+// Returns the font size and the point to draw at (textAlign center, baseline middle).
+// Pass `size` to lay the label out at a fixed size instead of searching for one.
+function fitLabelInTriangle(context, text, ts, { tab, af, rotation, fontFor, underline, margin, size }) {
+	const c = ts / 2;
+	const radius = ts * 0.5 / (1 + tab);
+	const rot = -rotation * Math.PI / 180;
+	const corners = [0, 1, 2].map(k => {
+		const a = af + k * 2 * Math.PI / 3;
+		const x = radius * Math.cos(a), y = -radius * Math.sin(a);
+		return [c + x * Math.cos(rot) - y * Math.sin(rot), c + x * Math.sin(rot) + y * Math.cos(rot)];
+	});
+	const [A, B, C] = corners;
+	const orient = Math.sign((B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]));
+	const inside = ([px, py]) => [[A, B], [B, C], [C, A]].every(([p, q]) => {
+		const ex = q[0] - p[0], ey = q[1] - p[1];
+		return orient * (ex * (py - p[1]) - ey * (px - p[0])) / Math.hypot(ex, ey) >= margin;
+	}) && px >= margin && py >= margin && px <= ts - margin && py <= ts - margin;
+
+	const layout = (size) => {
+		context.font = fontFor(size);
+		const m = context.measureText(text);
+		const left = m.actualBoundingBoxLeft ?? m.width / 2;
+		const right = m.actualBoundingBoxRight ?? m.width / 2;
+		const ascent = m.actualBoundingBoxAscent ?? size * 0.7;
+		const descent = m.actualBoundingBoxDescent ?? size * 0.7;
+		const height = ascent + descent;
+		const gap = underline ? height * 0.1 : 0;
+		const thickness = underline ? Math.max(2, height * 0.1) : 0;
+		// Centre the whole block (text plus any underline) on the face centre.
+		const x = c + (left - right) / 2;
+		const y = c + (ascent - descent - gap - thickness) / 2;
+		const box = [x - left, y - ascent, x + right, y + descent + gap + thickness];
+		return { size, x, y, box, width: left + right, underlineY: y + descent + gap, thickness };
+	};
+	const fits = ({ box: [x0, y0, x1, y1] }) => [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].every(inside);
+
+	if (size) {
+		const fixed = layout(size);
+		context.font = fontFor(size);
+		return fixed;
+	}
+
+	let lo = 1, hi = ts, best = layout(lo);
+	for (let i = 0; i < 20; i++) {
+		const mid = (lo + hi) / 2, l = layout(mid);
+		if (fits(l)) { best = l; lo = mid; } else { hi = mid; }
+	}
+	context.font = fontFor(best.size);
+	return best;
+}
+
 class DiceFactory {
 	static dice = {}
 	constructor(options) {
@@ -82,7 +147,10 @@ class DiceFactory {
 				let face = this.geometry.groups[i];
 				if (face.materialIndex == 0) continue;
 
-				let startVertex = face.start;
+				// face.start counts vertices (or index entries, for indexed geometry like
+				// the d2); the normals array has 3 floats per vertex.
+				const index = this.geometry.index;
+				let startVertex = (index ? index.array[face.start] : face.start) * 3;
 				let normal = new THREE.Vector3(normals[startVertex], normals[startVertex + 1], normals[startVertex + 2]);
 				let angle = normal.clone().applyQuaternion(this.body.quaternion).angleTo(vector);
 				if (angle < closest_angle) {
@@ -279,9 +347,10 @@ class DiceFactory {
 		}
 
 		// an attempt at materials caching
-		let cachestring = diceobj.type + textCache + index + texture.name + forecolor + outlinecolor + backcolor;
+		const textureOpacity = this.dice_texture_opacity ?? 1;
+		let cachestring = diceobj.type + textCache + index + texture.name + textureOpacity + forecolor + outlinecolor + backcolor;
 		if (diceobj.shape == 'd4') {
-			cachestring = diceobj.type + textCache + texture.name + forecolor + outlinecolor + backcolor;
+			cachestring = diceobj.type + textCache + texture.name + textureOpacity + forecolor + outlinecolor + backcolor;
 		}
 		if (allowcache && this.materials_cache[cachestring] != null) {
 			this.cache_hits++;
@@ -308,6 +377,9 @@ class DiceFactory {
 			ts = this.calc_texture_size(size + size * 2 * margin) * 4;
 		}
 
+		// 100 faces need 100 textures; half size keeps memory reasonable.
+		if (diceobj.shape == 'd100') ts = ts / 2;
+
 		canvas.width = canvas.height = ts;
 		canvasBump.width = canvasBump.height = ts;
 
@@ -320,13 +392,40 @@ class DiceFactory {
 
 		//create underlying texture
 		if (texture.texture && texture.name != '' && texture.name != 'none') {
-			context.globalCompositeOperation = texture.composite || 'source-over';
-			context.drawImage(texture.texture, 0, 0, canvas.width, canvas.height);
+			const composite = texture.composite || 'source-over';
+			let source = texture.texture;
+			let alpha = textureOpacity;
+
+			// Transparent textures cut their alpha into the dice ('destination-in').
+			// Fading them with globalAlpha would fade the whole die, so instead build a
+			// mask whose alpha blends from fully solid (opacity 0) to the texture's own
+			// alpha (opacity 1): mask alpha = (1 - opacity) + opacity * texture alpha.
+			if (composite === 'destination-in' && textureOpacity < 1) {
+				const mask = doc.createElement("canvas");
+				mask.width = canvas.width;
+				mask.height = canvas.height;
+				const maskContext = mask.getContext("2d", {alpha: true});
+				maskContext.globalAlpha = 1 - textureOpacity;
+				maskContext.fillStyle = "#000000";
+				maskContext.fillRect(0, 0, mask.width, mask.height);
+				maskContext.globalCompositeOperation = 'lighter';
+				maskContext.globalAlpha = textureOpacity;
+				maskContext.drawImage(texture.texture, 0, 0, mask.width, mask.height);
+				source = mask;
+				alpha = 1;
+			}
+
+			context.globalCompositeOperation = composite;
+			context.globalAlpha = alpha;
+			context.drawImage(source, 0, 0, canvas.width, canvas.height);
+			context.globalAlpha = 1;
 			context.globalCompositeOperation = 'source-over';
 
 			if (texture.bump) {
 				contextBump.globalCompositeOperation = 'source-over';
+				contextBump.globalAlpha = textureOpacity;
 				contextBump.drawImage(texture.bump, 0, 0, canvas.width, canvas.height);
+				contextBump.globalAlpha = 1;
 			}
 		} else {
 			context.globalCompositeOperation = 'source-over';
@@ -348,6 +447,7 @@ class DiceFactory {
 				d10: {all: -6},
 				d12: {all: 5},
 				d20: {all: -7.5},
+				d100: {all: -7.5},
 			};
 
 			// fix for some faces being weirdly rotated
@@ -399,8 +499,36 @@ class DiceFactory {
 					textstartx = textstartx*0.98;
 				}
 
-				context.font =  fontsize+ 'pt '+diceobj.font;
-				contextBump.font =  fontsize+ 'pt '+diceobj.font;
+				// Bold, and as large as the triangle allows, on the d100's small faces.
+				const fontWeight = diceobj.shape == 'd100' ? 'bold ' : '';
+				let fitted = null;
+				if (diceobj.shape == 'd100' && !text.includes("\n")) {
+					const fitOptions = (label) => ({
+						tab: -0.2, af: -Math.PI / 4 / 2, rotation: rotate.d100.all,
+						fontFor: size => fontWeight + size + 'pt ' + diceobj.font,
+						underline: readsDifferentlyUpsideDown(label.trim(), labels),
+						margin: ts * 0.03,
+					});
+					// Every number uses the same size: the largest at which every label fits.
+					// Worked out once per die type and texture size.
+					const sizeKey = diceobj.type + ts + diceobj.font;
+					this.uniformLabelSize = this.uniformLabelSize || {};
+					if (!this.uniformLabelSize[sizeKey]) {
+						this.uniformLabelSize[sizeKey] = Math.min(...labels
+							.filter(label => typeof label == 'string' && label.trim() != '')
+							.map(label => fitLabelInTriangle(context, label, ts, fitOptions(label)).size));
+					}
+					fitted = fitLabelInTriangle(context, text, ts, {
+						...fitOptions(text),
+						size: this.uniformLabelSize[sizeKey],
+					});
+					fontsize = fitted.size;
+					textstartx = fitted.x;
+					textstarty = fitted.y;
+				}
+
+				context.font =  fontWeight + fontsize+ 'pt '+diceobj.font;
+				contextBump.font =  fontWeight + fontsize+ 'pt '+diceobj.font;
 
 				let lineHeight = context.measureText("M").width * 1.4;
 				let textlines = text.split("\n");
@@ -442,6 +570,13 @@ class DiceFactory {
 					if (textline == '6' || textline == '9') {
 						context.fillText('  .', textstartx, textstarty);
 						contextBump.fillText('  .', textstartx, textstarty);
+					} else if (textline.length > 1 && readsDifferentlyUpsideDown(textline, labels)) {
+						// Multi-digit labels like 16 / 91 get an underline instead of a dot.
+						const width = fitted ? fitted.width : context.measureText(textline).width;
+						const thickness = fitted ? fitted.thickness : Math.max(2, fontsize * 0.08);
+						const y = fitted ? fitted.underlineY : textstarty + fontsize * 0.75;
+						context.fillRect(textstartx - width / 2, y, width, thickness);
+						contextBump.fillRect(textstartx - width / 2, y, width, thickness);
 					}
 					textstarty += (lineHeight * 1.5);
 				}
@@ -518,6 +653,9 @@ class DiceFactory {
 		this.dice_color = colordata.background;
 		this.label_outline = colordata.outline;
 		this.dice_texture = colordata.texture;
+		// How strongly the texture is drawn over the dice color, from 0 (none) to 1 (full).
+		const opacity = Number(colordata.textureOpacity);
+		this.dice_texture_opacity = Number.isFinite(opacity) ? Math.min(Math.max(opacity, 0), 1) : 1;
 		this.dice_material = colordata?.texture?.material || 'none';
 		this.edge_color = colordata.hasOwnProperty("edge") ? colordata.edge:colordata.background;
 	}
@@ -657,6 +795,9 @@ class DiceFactory {
 				return this[func](DICE_GEOM.d12.vertices, DICE_GEOM.d12.faces, radius, 0.2, -Math.PI / 4 / 2, 0.968);
 			case 'd20':
 				return this[func](DICE_GEOM.d20.vertices, DICE_GEOM.d20.faces, radius, -0.2, -Math.PI / 4 / 2, 0.955);
+			case 'd100':
+				// Triangular faces like the d20, so the same label mapping applies.
+				return this[func](DICE_GEOM.d100.vertices, DICE_GEOM.d100.faces, radius, -0.2, -Math.PI / 4 / 2, 0.955);
 			default:
 				console.error(`Geometry for ${type} is not available`)
 				return null;

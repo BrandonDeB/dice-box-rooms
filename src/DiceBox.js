@@ -561,12 +561,8 @@ class DiceBox {
 		result = parseInt(result);
 		
 		if (dicemesh.notation.type == 'd10' && value == 0) value = 10;
-		if (dicemesh.notation.type == 'd100' && value == 0) value = 100;
-		if (dicemesh.notation.type == 'd100' && (value > 0 && value < 10)) value *= 10;
 
 		if (dicemesh.notation.type == 'd10' && result == 0) result = 10;
-		if (dicemesh.notation.type == 'd100' && result == 0) result = 100;
-		if (dicemesh.notation.type == 'd100' && (result > 0 && result < 10)) result *= 10;
 
 		let valueindex = diceobj.values.indexOf(value);
 		let resultindex = diceobj.values.indexOf(result);
@@ -697,7 +693,8 @@ class DiceBox {
 		dicemesh.body.angularVelocity.set(angle.x, angle.y, angle.z);
 		dicemesh.body.velocity.set(velocity.x, velocity.y, velocity.z);
 		dicemesh.body.linearDamping = 0.1;
-		dicemesh.body.angularDamping = 0.1;
+		// Rounder dice (the d100) set more damping so they settle in a reasonable time.
+		dicemesh.body.angularDamping = this.DiceFactory.get(vectordata.type).angularDamping ?? 0.1;
 		dicemesh.body.diceShape = dicemesh.shape;
 		dicemesh.body.sleepState = 0;
 
