@@ -989,6 +989,11 @@ class DiceBox {
 					setTotal += this.diceList[counter].result.at(-1).value
 					counter++
 				}
+				// Advantage and disadvantage ("2d20{adv}") keep only the highest or lowest die.
+				if ((set.func === 'adv' || set.func === 'dis') && rolls.length > 0) {
+					const values = rolls.map(roll => roll.value)
+					setTotal = set.func === 'adv' ? Math.max(...values) : Math.min(...values)
+				}
 				const returnSet = {
 					num: set.num,
 					type: set.type,
